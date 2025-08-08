@@ -8,4 +8,4 @@ export interface TranslationRecord {
     originalText: string;
     translatedText: string;
     timestamp: string;
-}
+};
