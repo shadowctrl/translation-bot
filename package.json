@@ -1,0 +1,20 @@
+{
+    "name": "translation-bot",
+    "version": "1.0.0",
+    "main": "./build/index.js",
+    "repository": "https://github.com/muralianand12345/translation-bot.git",
+    "author": "Murali Anand <smurali1607@gmail.com>",
+    "license": "MIT",
+    "private": true,
+    "type": "commonjs",
+    "scripts": {
+        "build": "tsc",
+        "start": "node build/index.js",
+        "update-version": "node scripts/updateVersion.js"
+    },
+    "dependencies": {
+        "discord.js": "^14.21.0",
+        "dotenv": "^17.2.1",
+        "openai": "^5.12.2"
+    }
+}
