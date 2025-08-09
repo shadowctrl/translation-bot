@@ -113,9 +113,15 @@ const initializeBot = async () => {
 	}
 };
 
-client.once(discord.Events.ClientReady, () => {
+client.once(discord.Events.ClientReady, async () => {
 	console.log(`Logged in as ${client.user?.tag}`);
-	console.log(`Database has ${database.getUserCount()} users with ${database.getTotalTranslationCount()} total translations`);
+	try {
+		const userCount = await database.getUserCount();
+		const totalTranslations = await database.getTotalTranslationCount();
+		console.log(`Database has ${userCount} users with ${totalTranslations} total translations`);
+	} catch (error) {
+		console.error('Error fetching database stats:', error);
+	}
 });
 
 client.on(discord.Events.MessageCreate, (message) => {
@@ -143,7 +149,9 @@ client.on(discord.Events.MessageReactionAdd, async (reaction, user) => {
 	const userId = user.id;
 
 	try {
-		if (!database.userExists(userId)) {
+		const userExists = await database.userExists(userId);
+		
+		if (!userExists) {
 			const setupEmbed = createSetupEmbed();
 			const selectMenu = createLanguageSelectMenu();
 			const actionRow = new discord.ActionRowBuilder<discord.StringSelectMenuBuilder>().addComponents(selectMenu);
@@ -161,7 +169,7 @@ client.on(discord.Events.MessageReactionAdd, async (reaction, user) => {
 			return;
 		}
 
-		const targetLanguage = database.getUserTargetLanguage(userId);
+		const targetLanguage = await database.getUserTargetLanguage(userId);
 
 		if (!targetLanguage) {
 			console.error(`User ${userId} exists but has no target language set`);
@@ -224,25 +232,38 @@ client.on(discord.Events.InteractionCreate, async (interaction) => {
 			.addFields({ name: "What's next?", value: "React to any message with 🌍 in the designated channels and I'll send you a translation!", inline: false }, { name: 'Change language anytime', value: 'Just react to the 🌍 emoji again to update your language preference.', inline: false })
 			.setFooter({ text: 'Happy translating! 🌍' });
 
-		await interaction.update({ embeds: [successEmbed] });
+		await interaction.update({ embeds: [successEmbed], components: [] });
 		console.log(`User ${interaction.user.username} set their language to ${selectedLanguage}`);
 	} catch (error) {
 		console.error('Error saving user language preference:', error);
 		const errorEmbed = new discord.EmbedBuilder().setTitle('❌ Setup Error').setDescription('There was an error saving your language preference. Please try again.').setColor(0xff0000);
-		await interaction.update({ embeds: [errorEmbed] });
+		await interaction.update({ embeds: [errorEmbed], components: [] });
 	}
 });
 
-process.on('SIGINT', async () => {
-	console.log('Shutting down bot...');
-	client.destroy();
-	process.exit(0);
-});
+const gracefulShutdown = async (signal: string) => {
+	console.log(`${signal} received. Shutting down bot gracefully...`);
+	try {
+		client.destroy();
+		await database.disconnect();
+		console.log('Bot shutdown complete');
+		process.exit(0);
+	} catch (error) {
+		console.error('Error during shutdown:', error);
+		process.exit(1);
+	}
+};
 
-process.on('SIGTERM', async () => {
-	console.log('Shutting down bot...');
-	client.destroy();
-	process.exit(0);
+process.on('unhandledRejection', (error: Error) => {
+	console.error(`[UNHANDLED REJECTION] ${error.name}: ${error.message}`);
+	console.error(`Stack trace: ${error.stack}`);
 });
+process.on('uncaughtException', (error: Error, origin: NodeJS.UncaughtExceptionOrigin) => {
+	console.error(`[UNCAUGHT-EXCEPTION] ${error.name}: ${error.message}`);
+	console.error(`[UNCAUGHT-EXCEPTION] Origin: ${origin}`);
+	console.error(`[UNCAUGHT-EXCEPTION] Stack trace: ${error.stack}`);
+});
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 initializeBot();

@@ -34,99 +34,188 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.database = void 0;
-const fs = __importStar(require("fs/promises"));
-const path = __importStar(require("path"));
-const DB_FILE_PATH = path.join(__dirname, '../db.json');
+const mongoose_1 = __importStar(require("mongoose"));
+const TranslationRecordSchema = new mongoose_1.Schema({
+    originalText: { type: String, required: true },
+    translatedText: { type: String, required: true },
+    timestamp: { type: Date, default: Date.now },
+});
+const UserSchema = new mongoose_1.Schema({
+    userId: { type: String, required: true, unique: true },
+    targetLanguage: { type: String, required: true },
+    translations: [TranslationRecordSchema],
+}, { timestamps: true });
+const UserModel = mongoose_1.default.model('User', UserSchema);
 class Database {
     constructor() {
-        this.data = [];
+        this.isConnected = false;
     }
     async initialize() {
         try {
-            const fileContent = await fs.readFile(DB_FILE_PATH, 'utf-8');
-            this.data = JSON.parse(fileContent);
-            console.log('Database loaded successfully');
+            const mongoUri = process.env.MONGO_URI;
+            if (!mongoUri)
+                throw new Error('MONGO_URI environment variable is not set');
+            await mongoose_1.default.connect(mongoUri);
+            this.isConnected = true;
+            console.log('Connected to MongoDB successfully');
         }
         catch (error) {
-            if (error.code === 'ENOENT') {
-                console.log('Database file not found, creating new one...');
-                this.data = [];
-                await this.save();
-                console.log('New database file created');
-            }
-            else {
-                console.error('Error reading database file:', error);
-                throw error;
-            }
-        }
-    }
-    async save() {
-        try {
-            await fs.writeFile(DB_FILE_PATH, JSON.stringify(this.data, null, 2), 'utf-8');
-        }
-        catch (error) {
-            console.error('Error saving database file:', error);
+            console.error('Error connecting to MongoDB:', error);
             throw error;
         }
     }
-    getData() {
-        return this.data;
+    async disconnect() {
+        if (this.isConnected) {
+            await mongoose_1.default.disconnect();
+            this.isConnected = false;
+            console.log('Disconnected from MongoDB');
+        }
     }
-    findUser(userId) {
-        return this.data.find(user => user.userId === userId);
+    ensureConnection() {
+        if (!this.isConnected)
+            throw new Error('Database not connected. Call initialize() first.');
+    }
+    async getData() {
+        this.ensureConnection();
+        try {
+            const users = await UserModel.find().lean();
+            return users.map((user) => ({
+                userId: user.userId,
+                targetLanguage: user.targetLanguage,
+                translations: user.translations.map((t) => ({
+                    originalText: t.originalText,
+                    translatedText: t.translatedText,
+                    timestamp: t.timestamp.toISOString(),
+                })),
+            }));
+        }
+        catch (error) {
+            console.error('Error fetching all users:', error);
+            throw error;
+        }
+    }
+    async findUser(userId) {
+        this.ensureConnection();
+        try {
+            const user = await UserModel.findOne({ userId }).lean();
+            if (!user)
+                return undefined;
+            return {
+                userId: user.userId,
+                targetLanguage: user.targetLanguage,
+                translations: user.translations.map((t) => ({
+                    originalText: t.originalText,
+                    translatedText: t.translatedText,
+                    timestamp: t.timestamp.toISOString(),
+                })),
+            };
+        }
+        catch (error) {
+            console.error('Error finding user:', error);
+            throw error;
+        }
     }
     async upsertUser(userId, targetLanguage) {
-        const existingUser = this.findUser(userId);
-        if (existingUser) {
-            existingUser.targetLanguage = targetLanguage;
+        this.ensureConnection();
+        try {
+            await UserModel.findOneAndUpdate({ userId }, { $set: { targetLanguage } }, { upsert: true, new: true });
         }
-        else {
-            this.data.push({ userId, targetLanguage, translations: [] });
+        catch (error) {
+            console.error('Error upserting user:', error);
+            throw error;
         }
-        await this.save();
     }
     async addTranslation(userId, originalText, translatedText) {
-        const user = this.findUser(userId);
-        if (!user)
-            throw new Error(`User with ID ${userId} not found`);
-        const translationRecord = { originalText, translatedText, timestamp: new Date().toISOString() };
-        user.translations.push(translationRecord);
-        await this.save();
+        this.ensureConnection();
+        try {
+            const user = await UserModel.findOne({ userId });
+            if (!user)
+                throw new Error(`User with ID ${userId} not found`);
+            user.translations.push({ originalText, translatedText, timestamp: new Date() });
+            await user.save();
+        }
+        catch (error) {
+            console.error('Error adding translation:', error);
+            throw error;
+        }
     }
-    getUserTranslations(userId) {
-        const user = this.findUser(userId);
-        return user ? user.translations : [];
+    async getUserTranslations(userId) {
+        this.ensureConnection();
+        try {
+            const user = await UserModel.findOne({ userId }).lean();
+            if (!user)
+                return [];
+            return user.translations.map((t) => ({ originalText: t.originalText, translatedText: t.translatedText, timestamp: t.timestamp.toISOString() }));
+        }
+        catch (error) {
+            console.error('Error getting user translations:', error);
+            throw error;
+        }
     }
     async removeUser(userId) {
-        const initialLength = this.data.length;
-        this.data = this.data.filter(user => user.userId !== userId);
-        if (this.data.length < initialLength) {
-            await this.save();
-            return true;
+        this.ensureConnection();
+        try {
+            const result = await UserModel.deleteOne({ userId });
+            return result.deletedCount > 0;
         }
-        return false;
+        catch (error) {
+            console.error('Error removing user:', error);
+            throw error;
+        }
     }
     async clearUserTranslations(userId) {
-        const user = this.findUser(userId);
-        if (user) {
-            user.translations = [];
-            await this.save();
-            return true;
+        this.ensureConnection();
+        try {
+            const result = await UserModel.updateOne({ userId }, { $set: { translations: [] } });
+            return result.modifiedCount > 0;
         }
-        return false;
+        catch (error) {
+            console.error('Error clearing user translations:', error);
+            throw error;
+        }
     }
-    getUserCount() {
-        return this.data.length;
+    async getUserCount() {
+        this.ensureConnection();
+        try {
+            return await UserModel.countDocuments();
+        }
+        catch (error) {
+            console.error('Error getting user count:', error);
+            throw error;
+        }
     }
-    getTotalTranslationCount() {
-        return this.data.reduce((total, user) => total + user.translations.length, 0);
+    async getTotalTranslationCount() {
+        this.ensureConnection();
+        try {
+            const result = await UserModel.aggregate([{ $project: { translationCount: { $size: '$translations' } } }, { $group: { _id: null, total: { $sum: '$translationCount' } } }]);
+            return result.length > 0 ? result[0].total : 0;
+        }
+        catch (error) {
+            console.error('Error getting total translation count:', error);
+            throw error;
+        }
     }
-    getUserTargetLanguage(userId) {
-        const user = this.findUser(userId);
-        return user ? user.targetLanguage : null;
+    async getUserTargetLanguage(userId) {
+        this.ensureConnection();
+        try {
+            const user = await UserModel.findOne({ userId }, 'targetLanguage').lean();
+            return user ? user.targetLanguage : null;
+        }
+        catch (error) {
+            console.error('Error getting user target language:', error);
+            throw error;
+        }
     }
-    userExists(userId) {
-        return this.findUser(userId) !== undefined;
+    async userExists(userId) {
+        this.ensureConnection();
+        try {
+            const user = await UserModel.findOne({ userId }, '_id').lean();
+            return user !== null;
+        }
+        catch (error) {
+            console.error('Error checking if user exists:', error);
+            throw error;
+        }
     }
 }
 exports.database = new Database();

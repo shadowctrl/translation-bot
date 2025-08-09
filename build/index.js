@@ -109,9 +109,16 @@ const initializeBot = async () => {
         process.exit(1);
     }
 };
-client.once(discord_js_1.default.Events.ClientReady, () => {
+client.once(discord_js_1.default.Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user?.tag}`);
-    console.log(`Database has ${database_1.database.getUserCount()} users with ${database_1.database.getTotalTranslationCount()} total translations`);
+    try {
+        const userCount = await database_1.database.getUserCount();
+        const totalTranslations = await database_1.database.getTotalTranslationCount();
+        console.log(`Database has ${userCount} users with ${totalTranslations} total translations`);
+    }
+    catch (error) {
+        console.error('Error fetching database stats:', error);
+    }
 });
 client.on(discord_js_1.default.Events.MessageCreate, (message) => {
     if (message.author.bot)
@@ -139,7 +146,8 @@ client.on(discord_js_1.default.Events.MessageReactionAdd, async (reaction, user)
         return;
     const userId = user.id;
     try {
-        if (!database_1.database.userExists(userId)) {
+        const userExists = await database_1.database.userExists(userId);
+        if (!userExists) {
             const setupEmbed = createSetupEmbed();
             const selectMenu = createLanguageSelectMenu();
             const actionRow = new discord_js_1.default.ActionRowBuilder().addComponents(selectMenu);
@@ -157,7 +165,7 @@ client.on(discord_js_1.default.Events.MessageReactionAdd, async (reaction, user)
             }
             return;
         }
-        const targetLanguage = database_1.database.getUserTargetLanguage(userId);
+        const targetLanguage = await database_1.database.getUserTargetLanguage(userId);
         if (!targetLanguage) {
             console.error(`User ${userId} exists but has no target language set`);
             return;
@@ -217,23 +225,37 @@ client.on(discord_js_1.default.Events.InteractionCreate, async (interaction) => 
             .setColor(0x00ff00)
             .addFields({ name: "What's next?", value: "React to any message with 🌍 in the designated channels and I'll send you a translation!", inline: false }, { name: 'Change language anytime', value: 'Just react to the 🌍 emoji again to update your language preference.', inline: false })
             .setFooter({ text: 'Happy translating! 🌍' });
-        await interaction.update({ embeds: [successEmbed] });
+        await interaction.update({ embeds: [successEmbed], components: [] });
         console.log(`User ${interaction.user.username} set their language to ${selectedLanguage}`);
     }
     catch (error) {
         console.error('Error saving user language preference:', error);
         const errorEmbed = new discord_js_1.default.EmbedBuilder().setTitle('❌ Setup Error').setDescription('There was an error saving your language preference. Please try again.').setColor(0xff0000);
-        await interaction.update({ embeds: [errorEmbed] });
+        await interaction.update({ embeds: [errorEmbed], components: [] });
     }
 });
-process.on('SIGINT', async () => {
-    console.log('Shutting down bot...');
-    client.destroy();
-    process.exit(0);
+const gracefulShutdown = async (signal) => {
+    console.log(`${signal} received. Shutting down bot gracefully...`);
+    try {
+        client.destroy();
+        await database_1.database.disconnect();
+        console.log('Bot shutdown complete');
+        process.exit(0);
+    }
+    catch (error) {
+        console.error('Error during shutdown:', error);
+        process.exit(1);
+    }
+};
+process.on('unhandledRejection', (error) => {
+    console.error(`[UNHANDLED REJECTION] ${error.name}: ${error.message}`);
+    console.error(`Stack trace: ${error.stack}`);
 });
-process.on('SIGTERM', async () => {
-    console.log('Shutting down bot...');
-    client.destroy();
-    process.exit(0);
+process.on('uncaughtException', (error, origin) => {
+    console.error(`[UNCAUGHT-EXCEPTION] ${error.name}: ${error.message}`);
+    console.error(`[UNCAUGHT-EXCEPTION] Origin: ${origin}`);
+    console.error(`[UNCAUGHT-EXCEPTION] Stack trace: ${error.stack}`);
 });
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 initializeBot();
