@@ -24,18 +24,15 @@ jobs:
       - name: Create .env file
         id: create-env
         run: |
-          echo "BOT_TOKEN=${{secrets.BOT_TOKEN}}" > .env
-          echo "MONGO_URI=${{secrets.MONGO_URI}}" >> .env
-          echo "OPENAI_BASE_URL=${{secrets.OPENAI_BASE_URL}}" >> .env
-          echo "OPENAI_MODEL=${{secrets.OPENAI_MODEL}}" >> .env
-          echo "OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}" >> .env
-
-          pwd
-          ls -la
-          ls -la .env
-          file .env
-
-          echo "success=true" >> $GITHUB_OUTPUT
+          cat > .env << 'EOF'
+          BOT_TOKEN=${{secrets.BOT_TOKEN}}
+          MONGO_URI=${{secrets.MONGO_URI}}
+          OPENAI_BASE_URL=${{secrets.OPENAI_BASE_URL}}
+          OPENAI_MODEL=${{secrets.OPENAI_MODEL}}
+          OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}
+          EOF
+              ls -l .env
+              echo "success=true" >> $GITHUB_OUTPUT
 
       - name: Upload .env as artifact
         uses: actions/upload-artifact@v4
