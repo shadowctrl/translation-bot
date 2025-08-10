@@ -127,9 +127,7 @@ jobs:
             sudo docker load -i /tmp/${{ needs.build-and-push.outputs.image-tar }}
             sudo docker tag ${{ env.IMAGE_NAME }}:latest ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest
             sudo docker push ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest
-            sudo docker push ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest
             rm -f /tmp/${{ needs.build-and-push.outputs.image-tar }}
-            echo "success=true" >> $GITHUB_OUTPUT
 
   prepare-provisioning:
     name: Prepare Provisioning
