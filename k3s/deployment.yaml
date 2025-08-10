@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: translation-bot
+  namespace: ${NAMESPACE}
+  labels:
+    app: translation-bot
+    version: ${IMAGE_TAG}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: translation-bot
+  template:
+    metadata:
+      labels:
+        app: translation-bot
+        version: ${IMAGE_TAG}
+    spec:
+      containers:
+        - name: translation-bot
+          image: ${REGISTRY_HOST}:5000/${IMAGE_NAME}:${IMAGE_TAG}
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: translation-bot-secrets
+          env:
+            - name: NODE_ENV
+              value: 'production'
+          resources:
+            requests:
+              memory: '256Mi'
+              cpu: '100m'
+            limits:
+              memory: '512Mi'
+              cpu: '500m'
+          livenessProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - "console.log('Bot is running')"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - "console.log('Bot is ready')"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      restartPolicy: Always
