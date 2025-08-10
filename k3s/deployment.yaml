@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: translation-bot
-          image: ${REGISTRY_HOST}:5000/${IMAGE_NAME}:${IMAGE_TAG}
+          image: ${REGISTRY_HOST}:5000/${IMAGE_NAME}latest
           imagePullPolicy: Always
           envFrom:
             - secretRef:
