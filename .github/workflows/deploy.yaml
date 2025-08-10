@@ -125,10 +125,8 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             sudo docker load -i /tmp/${{ needs.build-and-push.outputs.image-tar }}
-            IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
-            sudo docker tag ${{ env.IMAGE_NAME }}:latest ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
             sudo docker tag ${{ env.IMAGE_NAME }}:latest ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest
-            sudo docker push ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+            sudo docker push ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest
             sudo docker push ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest
             rm -f /tmp/${{ needs.build-and-push.outputs.image-tar }}
             echo "success=true" >> $GITHUB_OUTPUT
