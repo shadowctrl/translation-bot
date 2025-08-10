@@ -81,7 +81,6 @@ jobs:
             --platform linux/arm64 \
             --output type=docker \
             -t ${IMAGE_NAME}:latest \
-            -t ${IMAGE_NAME}:${{ env.IMAGE_TAG }} \
             .
           docker save ${IMAGE_NAME}:latest -o ${IMAGE_NAME}-image.tar
           echo "image-tar=${IMAGE_NAME}-image.tar" >> $GITHUB_OUTPUT
