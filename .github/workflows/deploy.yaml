@@ -194,9 +194,9 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           source: 'k3s/*'
-          target: '/tmp/k3s-deployment/'
+          target: '/tmp/k3s-deployment-${{ github.run_id }}/'
 
-      - name: Debug and Apply K3s deployment
+      - name: Apply K3s deployment
         id: apply-k3s
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -207,68 +207,47 @@ jobs:
           timeout: 30m
           command_timeout: 30m
           script: |
-            echo "=== DEBUG: Finding YAML files ==="
-            echo "Contents of /tmp:"
-            ls -la /tmp/ | grep k3s
+            # Use unique directory name to avoid conflicts
+            DEPLOY_DIR="/tmp/k3s-deployment-${{ github.run_id }}"
+            cd "$DEPLOY_DIR"
 
-            echo "Contents of /tmp/k3s-deployment:"
-            ls -la /tmp/k3s-deployment/ 2>/dev/null || echo "Directory does not exist"
-
-            echo "Searching for YAML files recursively:"
-            find /tmp -name "*.yaml" -o -name "*.yml" 2>/dev/null | head -20
-
-            # Find the actual directory with YAML files
-            YAML_DIR=""
-            if [ -d "/tmp/k3s-deployment" ]; then
-              if ls /tmp/k3s-deployment/*.yaml >/dev/null 2>&1 || ls /tmp/k3s-deployment/*.yml >/dev/null 2>&1; then
-                YAML_DIR="/tmp/k3s-deployment"
-              elif ls /tmp/k3s-deployment/*/*.yaml >/dev/null 2>&1 || ls /tmp/k3s-deployment/*/*.yml >/dev/null 2>&1; then
-                YAML_DIR="/tmp/k3s-deployment/k3s"
-              fi
-            fi
-
-            if [ -z "$YAML_DIR" ]; then
-              echo "ERROR: Could not find YAML files"
-              exit 1
-            fi
-
-            echo "=== Using YAML directory: $YAML_DIR ==="
-            cd "$YAML_DIR"
-
-            echo "Files in working directory:"
-            ls -la
+            echo "=== Working in: $DEPLOY_DIR ==="
+            echo "Files available:"
+            find . -name "*.yaml" -o -name "*.yml"
 
             # Apply namespace first
-            NAMESPACE_APPLIED=false
-            for ns_file in namespace.yaml namespace.yml; do
-              if [ -f "$ns_file" ]; then
-                echo "Applying $ns_file..."
-                sudo kubectl apply -f "$ns_file"
-                NAMESPACE_APPLIED=true
-                break
-              fi
-            done
-
-            if [ "$NAMESPACE_APPLIED" = false ]; then
+            if [ -f "namespace.yaml" ]; then
+              echo "Applying namespace.yaml..."
+              sudo kubectl apply -f namespace.yaml
+            elif [ -f "namespace.yml" ]; then
+              echo "Applying namespace.yml..."
+              sudo kubectl apply -f namespace.yml
+            else
               echo "No namespace file found, creating namespace directly..."
               sudo kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | sudo kubectl apply -f -
             fi
 
-            echo "Waiting for namespace to be ready..."
-            sudo kubectl wait --for=condition=active namespace/${{ env.NAMESPACE }} --timeout=60s
+            # Wait for namespace to exist (not "active" - that doesn't exist for namespaces)
+            echo "Verifying namespace exists..."
+            timeout 60 bash -c 'until kubectl get namespace ${{ env.NAMESPACE }} >/dev/null 2>&1; do sleep 1; done'
+            echo "Namespace confirmed to exist"
 
-            # Apply all other YAML files
+            # Apply all other YAML files using find to avoid shell glob issues
             echo "Applying remaining manifests..."
             APPLIED_COUNT=0
-            for file in *.yaml *.yml; do
-              if [[ -f "$file" && "$file" != "namespace.yaml" && "$file" != "namespace.yml" ]]; then
-                echo "Applying $file..."
+
+            # Use find to avoid shell glob issues
+            find . -maxdepth 1 \( -name "*.yaml" -o -name "*.yml" \) -type f | while read -r file; do
+              filename=$(basename "$file")
+              if [[ "$filename" != "namespace.yaml" && "$filename" != "namespace.yml" ]]; then
+                echo "Applying $filename..."
                 sudo kubectl apply -f "$file"
                 APPLIED_COUNT=$((APPLIED_COUNT + 1))
               fi
             done
 
-            echo "Applied $APPLIED_COUNT manifest files"
+            # Wait a moment for resources to be created
+            sleep 5
 
             # Handle deployment
             if sudo kubectl get deployment translation-bot -n ${{ env.NAMESPACE }} >/dev/null 2>&1; then
@@ -277,9 +256,12 @@ jobs:
               sudo kubectl rollout status deployment/translation-bot -n ${{ env.NAMESPACE }} --timeout=300s
             else
               echo "Waiting for new deployment to be ready..."
-              sudo kubectl wait --for=condition=available deployment/translation-bot -n ${{ env.NAMESPACE }} --timeout=300s
+              # Wait for deployment to exist first
+              timeout 60 bash -c 'until kubectl get deployment translation-bot -n ${{ env.NAMESPACE }} >/dev/null 2>&1; do sleep 2; done'
+              sudo kubectl rollout status deployment/translation-bot -n ${{ env.NAMESPACE }} --timeout=300s
             fi
 
+            echo "Deployment completed successfully!"
             echo "status=success" >> $GITHUB_OUTPUT
 
   deployment-provisioned:
