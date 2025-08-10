@@ -177,7 +177,7 @@ jobs:
     environment: prod
     timeout-minutes: 30
     outputs:
-      provisioning-status: ${{ steps.apply-k3s.outputs.status }}
+      provisioning-status: ${{ steps.set-output.outputs.status }}
     steps:
       - name: Download K3s manifests
         uses: actions/download-artifact@v4
