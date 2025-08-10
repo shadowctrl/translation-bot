@@ -196,7 +196,7 @@ jobs:
           source: 'k3s/*'
           target: '/tmp/k3s-deployment/'
 
-      - name: Apply K3s deployment
+      - name: Debug and Apply K3s deployment
         id: apply-k3s
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -207,20 +207,79 @@ jobs:
           timeout: 30m
           command_timeout: 30m
           script: |
-            cd /tmp/k3s-deployment
-            if [ -f "namespace.yaml" ] || [ -f "namespace.yml" ]; then
-              sudo kubectl apply -f namespace.yaml 2>/dev/null || sudo kubectl apply -f namespace.yml 2>/dev/null || true
+            echo "=== DEBUG: Finding YAML files ==="
+            echo "Contents of /tmp:"
+            ls -la /tmp/ | grep k3s
+
+            echo "Contents of /tmp/k3s-deployment:"
+            ls -la /tmp/k3s-deployment/ 2>/dev/null || echo "Directory does not exist"
+
+            echo "Searching for YAML files recursively:"
+            find /tmp -name "*.yaml" -o -name "*.yml" 2>/dev/null | head -20
+
+            # Find the actual directory with YAML files
+            YAML_DIR=""
+            if [ -d "/tmp/k3s-deployment" ]; then
+              if ls /tmp/k3s-deployment/*.yaml >/dev/null 2>&1 || ls /tmp/k3s-deployment/*.yml >/dev/null 2>&1; then
+                YAML_DIR="/tmp/k3s-deployment"
+              elif ls /tmp/k3s-deployment/*/*.yaml >/dev/null 2>&1 || ls /tmp/k3s-deployment/*/*.yml >/dev/null 2>&1; then
+                YAML_DIR="/tmp/k3s-deployment/k3s"
+              fi
             fi
-            sudo kubectl wait --for=condition=active namespace/${{ env.NAMESPACE }} --timeout=60s
-            for file in *.yaml *.yml; do
-              if [[ -f "$file" && "$file" != "namespace.yaml" && "$file" != "namespace.yml" ]]; then
-                sudo kubectl apply -f "$file"
+
+            if [ -z "$YAML_DIR" ]; then
+              echo "ERROR: Could not find YAML files"
+              exit 1
+            fi
+
+            echo "=== Using YAML directory: $YAML_DIR ==="
+            cd "$YAML_DIR"
+
+            echo "Files in working directory:"
+            ls -la
+
+            # Apply namespace first
+            NAMESPACE_APPLIED=false
+            for ns_file in namespace.yaml namespace.yml; do
+              if [ -f "$ns_file" ]; then
+                echo "Applying $ns_file..."
+                sudo kubectl apply -f "$ns_file"
+                NAMESPACE_APPLIED=true
+                break
               fi
             done
+
+            if [ "$NAMESPACE_APPLIED" = false ]; then
+              echo "No namespace file found, creating namespace directly..."
+              sudo kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | sudo kubectl apply -f -
+            fi
+
+            echo "Waiting for namespace to be ready..."
+            sudo kubectl wait --for=condition=active namespace/${{ env.NAMESPACE }} --timeout=60s
+
+            # Apply all other YAML files
+            echo "Applying remaining manifests..."
+            APPLIED_COUNT=0
+            for file in *.yaml *.yml; do
+              if [[ -f "$file" && "$file" != "namespace.yaml" && "$file" != "namespace.yml" ]]; then
+                echo "Applying $file..."
+                sudo kubectl apply -f "$file"
+                APPLIED_COUNT=$((APPLIED_COUNT + 1))
+              fi
+            done
+
+            echo "Applied $APPLIED_COUNT manifest files"
+
+            # Handle deployment
             if sudo kubectl get deployment translation-bot -n ${{ env.NAMESPACE }} >/dev/null 2>&1; then
+              echo "Restarting existing deployment..."
               sudo kubectl rollout restart deployment/translation-bot -n ${{ env.NAMESPACE }}
               sudo kubectl rollout status deployment/translation-bot -n ${{ env.NAMESPACE }} --timeout=300s
+            else
+              echo "Waiting for new deployment to be ready..."
+              sudo kubectl wait --for=condition=available deployment/translation-bot -n ${{ env.NAMESPACE }} --timeout=300s
             fi
+
             echo "status=success" >> $GITHUB_OUTPUT
 
   deployment-provisioned:
