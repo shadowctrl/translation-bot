@@ -11,10 +11,6 @@ env:
   REGISTRY_HOST: 192.168.0.103:5000
   IMAGE_NAME: translation-bot
 
-defaults:
-  run:
-    working-directory: .
-
 jobs:
   prepare-env:
     name: Prepare Environment
@@ -28,13 +24,16 @@ jobs:
       - name: Create .env file
         id: create-env
         run: |
-          cat > .env << 'EOF'
-          BOT_TOKEN=${{secrets.BOT_TOKEN}}
-          MONGO_URI=${{secrets.MONGO_URI}}
-          OPENAI_BASE_URL=${{secrets.OPENAI_BASE_URL}}
-          OPENAI_MODEL=${{secrets.OPENAI_MODEL}}
-          OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}
-          EOF
+          echo "BOT_TOKEN=${{secrets.BOT_TOKEN}}" > .env
+          echo "MONGO_URI=${{secrets.MONGO_URI}}" >> .env
+          echo "OPENAI_BASE_URL=${{secrets.OPENAI_BASE_URL}}" >> .env
+          echo "OPENAI_MODEL=${{secrets.OPENAI_MODEL}}" >> .env
+          echo "OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}" >> .env
+
+          # Verify file creation
+          ls -la .env
+          cat .env
+
           echo "success=true" >> $GITHUB_OUTPUT
 
       - name: Upload .env as artifact
