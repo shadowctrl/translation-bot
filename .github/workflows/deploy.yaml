@@ -209,11 +209,23 @@ jobs:
           script: |
             # Use unique directory name to avoid conflicts
             DEPLOY_DIR="/tmp/k3s-deployment-${{ github.run_id }}"
-            cd "$DEPLOY_DIR"
 
             echo "=== Working in: $DEPLOY_DIR ==="
-            echo "Files available:"
-            find . -name "*.yaml" -o -name "*.yml"
+            echo "Directory structure:"
+            find "$DEPLOY_DIR" -type f -name "*.yaml" -o -name "*.yml"
+
+            # Find the actual directory with YAML files
+            if [ -d "$DEPLOY_DIR/k3s" ]; then
+              YAML_DIR="$DEPLOY_DIR/k3s"
+            else
+              YAML_DIR="$DEPLOY_DIR"
+            fi
+
+            echo "=== Using YAML directory: $YAML_DIR ==="
+            cd "$YAML_DIR"
+
+            echo "Files in working directory:"
+            ls -la *.yaml *.yml 2>/dev/null || echo "No YAML files found"
 
             # Apply namespace first
             if [ -f "namespace.yaml" ]; then
@@ -227,24 +239,35 @@ jobs:
               sudo kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | sudo kubectl apply -f -
             fi
 
-            # Wait for namespace to exist (not "active" - that doesn't exist for namespaces)
+            # Wait for namespace to exist
             echo "Verifying namespace exists..."
             timeout 60 bash -c 'until kubectl get namespace ${{ env.NAMESPACE }} >/dev/null 2>&1; do sleep 1; done'
             echo "Namespace confirmed to exist"
 
-            # Apply all other YAML files using find to avoid shell glob issues
+            # Apply all other YAML files
             echo "Applying remaining manifests..."
             APPLIED_COUNT=0
 
-            # Use find to avoid shell glob issues
-            find . -maxdepth 1 \( -name "*.yaml" -o -name "*.yml" \) -type f | while read -r file; do
-              filename=$(basename "$file")
-              if [[ "$filename" != "namespace.yaml" && "$filename" != "namespace.yml" ]]; then
-                echo "Applying $filename..."
+            for file in *.yaml; do
+              if [[ -f "$file" && "$file" != "namespace.yaml" ]]; then
+                echo "Applying $file..."
                 sudo kubectl apply -f "$file"
                 APPLIED_COUNT=$((APPLIED_COUNT + 1))
               fi
             done
+
+            # Check for .yml files if they exist
+            if ls *.yml >/dev/null 2>&1; then
+              for file in *.yml; do
+                if [[ -f "$file" && "$file" != "namespace.yml" ]]; then
+                  echo "Applying $file..."
+                  sudo kubectl apply -f "$file"
+                  APPLIED_COUNT=$((APPLIED_COUNT + 1))
+                fi
+              done
+            fi
+
+            echo "Applied $APPLIED_COUNT manifest files"
 
             # Wait a moment for resources to be created
             sleep 5
