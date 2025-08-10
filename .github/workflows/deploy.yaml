@@ -11,6 +11,10 @@ env:
   REGISTRY_HOST: 192.168.0.103:5000
   IMAGE_NAME: translation-bot
 
+defaults:
+  run:
+    working-directory: ${{ github.workspace }}
+
 jobs:
   prepare-env:
     name: Prepare Environment
@@ -31,7 +35,6 @@ jobs:
           OPENAI_MODEL=${{secrets.OPENAI_MODEL}}
           OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}
           EOF
-          ls -l .env
           echo "success=true" >> $GITHUB_OUTPUT
 
       - name: Upload .env as artifact
