@@ -283,7 +283,6 @@ jobs:
     name: Deployment Provisioned
     runs-on: ubuntu-latest
     needs: [provisioning-deployment, build-and-push]
-    if: needs.provisioning-deployment.outputs.provisioning-status == 'success'
     steps:
       - name: Verify deployment status
         uses: appleboy/ssh-action@v1.0.3
