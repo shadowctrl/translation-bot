@@ -210,8 +210,6 @@ jobs:
             DEPLOY_DIR="/tmp/k3s-deployment-${{ github.run_id }}"
 
             echo "=== Working in: $DEPLOY_DIR ==="
-            echo "Directory structure:"
-            find "$DEPLOY_DIR" -type f -name "*.yaml" -o -name "*.yml"
 
             # Find the actual directory with YAML files
             if [ -d "$DEPLOY_DIR/k3s" ]; then
@@ -224,7 +222,7 @@ jobs:
             cd "$YAML_DIR"
 
             echo "Files in working directory:"
-            ls -la *.yaml *.yml 2>/dev/null || echo "No YAML files found"
+            ls -la
 
             # Apply namespace first
             if [ -f "namespace.yaml" ]; then
@@ -238,53 +236,50 @@ jobs:
               sudo kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | sudo kubectl apply -f -
             fi
 
-            # Wait for namespace to exist
+            # Verify namespace exists
             echo "Verifying namespace exists..."
-            timeout 60 bash -c 'until kubectl get namespace ${{ env.NAMESPACE }} >/dev/null 2>&1; do sleep 1; done'
-            echo "Namespace confirmed to exist"
+            kubectl get namespace ${{ env.NAMESPACE }}
 
-            # Apply all other YAML files
+            # Apply all other YAML files (avoid shell glob errors)
             echo "Applying remaining manifests..."
             APPLIED_COUNT=0
 
-            for file in *.yaml; do
-              if [[ -f "$file" && "$file" != "namespace.yaml" ]]; then
-                echo "Applying $file..."
+            # Use find to avoid glob issues
+            find . -maxdepth 1 -name "*.yaml" -type f | while read -r file; do
+              filename=$(basename "$file")
+              if [[ "$filename" != "namespace.yaml" ]]; then
+                echo "Applying $filename..."
                 sudo kubectl apply -f "$file"
-                APPLIED_COUNT=$((APPLIED_COUNT + 1))
               fi
             done
 
-            # Check for .yml files if they exist
-            if ls *.yml >/dev/null 2>&1; then
-              for file in *.yml; do
-                if [[ -f "$file" && "$file" != "namespace.yml" ]]; then
-                  echo "Applying $file..."
-                  sudo kubectl apply -f "$file"
-                  APPLIED_COUNT=$((APPLIED_COUNT + 1))
-                fi
-              done
-            fi
+            find . -maxdepth 1 -name "*.yml" -type f | while read -r file; do
+              filename=$(basename "$file")
+              if [[ "$filename" != "namespace.yml" ]]; then
+                echo "Applying $filename..."
+                sudo kubectl apply -f "$file"
+              fi
+            done
 
-            echo "Applied $APPLIED_COUNT manifest files"
+            echo "All manifests applied successfully"
 
             # Wait a moment for resources to be created
             sleep 5
 
-            # Handle deployment
-            if sudo kubectl get deployment translation-bot -n ${{ env.NAMESPACE }} >/dev/null 2>&1; then
-              echo "Restarting existing deployment..."
-              sudo kubectl rollout restart deployment/translation-bot -n ${{ env.NAMESPACE }}
-              sudo kubectl rollout status deployment/translation-bot -n ${{ env.NAMESPACE }} --timeout=300s
-            else
-              echo "Waiting for new deployment to be ready..."
-              # Wait for deployment to exist first
-              timeout 60 bash -c 'until kubectl get deployment translation-bot -n ${{ env.NAMESPACE }} >/dev/null 2>&1; do sleep 2; done'
-              sudo kubectl rollout status deployment/translation-bot -n ${{ env.NAMESPACE }} --timeout=300s
-            fi
+            # Handle deployment rollout
+            echo "Rolling out deployment..."
+            sudo kubectl rollout restart deployment/translation-bot -n ${{ env.NAMESPACE }}
+            sudo kubectl rollout status deployment/translation-bot -n ${{ env.NAMESPACE }} --timeout=300s
 
             echo "Deployment completed successfully!"
-            echo "status=success" >> $GITHUB_OUTPUT
+
+            # Clean up
+            rm -rf "$DEPLOY_DIR"
+
+            # Set output (avoid potential file issues)
+            if [ -w "$GITHUB_OUTPUT" ]; then
+              echo "status=success" >> "$GITHUB_OUTPUT"
+            fi
 
   deployment-provisioned:
     name: Deployment Provisioned
