@@ -30,7 +30,7 @@ jobs:
           OPENAI_BASE_URL=${{secrets.OPENAI_BASE_URL}}
           OPENAI_MODEL=${{secrets.OPENAI_MODEL}}
           OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}
-          EOF 
+          EOF
           echo "success=true" >> $GITHUB_OUTPUT
 
       - name: Upload .env as artifact
