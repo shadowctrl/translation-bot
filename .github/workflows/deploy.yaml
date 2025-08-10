@@ -41,7 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: env-file
-          path: ./.env
+          path: /home/runner/work/translation-bot/translation-bot/.env
           retention-days: 1
 
   build-and-push:
