@@ -193,7 +193,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: 'k3s/'
+          source: 'k3s/*'
           target: '/tmp/k3s-deployment/'
 
       - name: Apply K3s deployment
