@@ -129,6 +129,9 @@ jobs:
             sudo docker push ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:latest
             rm -f /tmp/${{ needs.build-and-push.outputs.image-tar }}
 
+      - name: Mark success
+        run: echo "success=true" >> $GITHUB_OUTPUT
+
   prepare-provisioning:
     name: Prepare Provisioning
     runs-on: ubuntu-latest
