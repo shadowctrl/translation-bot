@@ -242,7 +242,6 @@ jobs:
 
             # Apply all other YAML files (avoid shell glob errors)
             echo "Applying remaining manifests..."
-            APPLIED_COUNT=0
 
             # Use find to avoid glob issues
             find . -maxdepth 1 -name "*.yaml" -type f | while read -r file; do
@@ -276,10 +275,9 @@ jobs:
             # Clean up
             rm -rf "$DEPLOY_DIR"
 
-            # Set output (avoid potential file issues)
-            if [ -w "$GITHUB_OUTPUT" ]; then
-              echo "status=success" >> "$GITHUB_OUTPUT"
-            fi
+      - name: Set success output
+        if: success()
+        run: echo "status=success" >> $GITHUB_OUTPUT
 
   deployment-provisioned:
     name: Deployment Provisioned
