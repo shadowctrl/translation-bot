@@ -30,9 +30,10 @@ jobs:
           echo "OPENAI_MODEL=${{secrets.OPENAI_MODEL}}" >> .env
           echo "OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}" >> .env
 
-          # Verify file creation
+          pwd
+          ls -la
           ls -la .env
-          cat .env
+          file .env
 
           echo "success=true" >> $GITHUB_OUTPUT
 
@@ -40,7 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: env-file
-          path: .env
+          path: ${{ github.workspace }}/.env
           retention-days: 1
 
   build-and-push:
