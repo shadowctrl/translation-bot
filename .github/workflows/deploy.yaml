@@ -130,6 +130,7 @@ jobs:
             rm -f /tmp/${{ needs.build-and-push.outputs.image-tar }}
 
       - name: Mark success
+        id: mark-success
         run: echo "success=true" >> $GITHUB_OUTPUT
 
   prepare-provisioning:
